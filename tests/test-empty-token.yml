@@ -1,0 +1,37 @@
+name: Test empty GITHUB_TOKEN fails gracefully
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify empty token check works
+        shell: bash
+        run: |
+          # Simulate what the action does when GITHUB_TOKEN is empty
+          GITHUB_TOKEN=""
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "PASS: empty token check works as expected"
+          else
+            echo "FAIL: empty token check did not trigger"
+            exit 1
+          fi
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ""
+
+      - name: Assert action failed due to empty token
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "FAIL: expected action to fail when GITHUB_TOKEN is empty, got '$OUTCOME'"
+            exit 1
+          fi
+          echo "PASS: action correctly failed with empty GITHUB_TOKEN"

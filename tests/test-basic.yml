@@ -1,0 +1,91 @@
+name: Test basic usage with real token
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install required tools if not present
+        run: |
+          PKGS=""
+          command -v gh &>/dev/null || PKGS="$PKGS gh"
+          command -v jq &>/dev/null || PKGS="$PKGS jq"
+          if [ -n "$PKGS" ]; then
+            apt-get update -qq
+            if echo "$PKGS" | grep -q "gh"; then
+              type -p curl >/dev/null || apt-get install -y curl
+              curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+              chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+              echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+              apt-get update -qq
+            fi
+            apt-get install -y $PKGS
+          fi
+          echo "gh version: $(gh --version | head -1)"
+          echo "jq version: $(jq --version)"
+
+      - id: action
+        uses: .
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Assert name output is non-empty
+        env:
+          ACTUAL_NAME: ${{ steps.action.outputs.name }}
+        run: |
+          echo "name: $ACTUAL_NAME"
+          if [ -z "$ACTUAL_NAME" ]; then
+            echo "FAIL: expected non-empty name output"
+            exit 1
+          fi
+          echo "PASS: name='$ACTUAL_NAME'"
+
+      - name: Assert email output is non-empty and has expected format
+        env:
+          ACTUAL_EMAIL: ${{ steps.action.outputs.email }}
+        run: |
+          echo "email: $ACTUAL_EMAIL"
+          if [ -z "$ACTUAL_EMAIL" ]; then
+            echo "FAIL: expected non-empty email output"
+            exit 1
+          fi
+          # Email should match the pattern: <id>+<login>@users.noreply.github.com
+          if ! echo "$ACTUAL_EMAIL" | grep -qE '^[0-9]+\+.+@users\.noreply\.github\.com$'; then
+            echo "FAIL: email does not match expected pattern '<id>+<login>@users.noreply.github.com'"
+            exit 1
+          fi
+          echo "PASS: email='$ACTUAL_EMAIL'"
+
+      - name: Assert git config user.name is set
+        env:
+          ACTUAL_NAME: ${{ steps.action.outputs.name }}
+        run: |
+          GIT_NAME=$(git config --global user.name)
+          echo "git config user.name: $GIT_NAME"
+          if [ -z "$GIT_NAME" ]; then
+            echo "FAIL: git config user.name is not set"
+            exit 1
+          fi
+          if [ "$GIT_NAME" != "$ACTUAL_NAME" ]; then
+            echo "FAIL: git config user.name '$GIT_NAME' does not match output name '$ACTUAL_NAME'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert git config user.email is set
+        env:
+          ACTUAL_EMAIL: ${{ steps.action.outputs.email }}
+        run: |
+          GIT_EMAIL=$(git config --global user.email)
+          echo "git config user.email: $GIT_EMAIL"
+          if [ -z "$GIT_EMAIL" ]; then
+            echo "FAIL: git config user.email is not set"
+            exit 1
+          fi
+          if [ "$GIT_EMAIL" != "$ACTUAL_EMAIL" ]; then
+            echo "FAIL: git config user.email '$GIT_EMAIL' does not match output email '$ACTUAL_EMAIL'"
+            exit 1
+          fi
+          echo "PASS"
